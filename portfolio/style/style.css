@@ -433,8 +433,8 @@ width:20vw;
     color: white;
     border: 3px solid white;
    
-        position: absolute;
-        top: 454px;
+        position: relative;
+        top: -87px;
 }
 .location h1{
     position:relative;
