@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PubMed Paper Fetcher</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .search-box {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        #searchQuery {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px 0 0 4px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 0 4px 4px 0;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .export {
+            margin-top: 20px;
+            text-align: right;
+        }
+        #loading {
+            text-align: center;
+            margin: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PubMed Paper Fetcher</h1>
+        <div class="search-box">
+            <input type="text" id="searchQuery" placeholder="Enter PubMed search query (e.g., 'cancer treatment')">
+            <button id="searchButton">Search</button>
+        </div>
+        <div id="loading">Loading...</div>
+        <div class="results">
+            <table id="resultsTable">
+                <thead>
+                    <tr>
+                        <th>PMID</th>
+                        <th>Title</th>
+                        <th>Date</th>
+                        <th>Company Affiliations</th>
+                        <th>Author Emails</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        <div class="export">
+            <button id="exportCsv">Export to CSV</button>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const searchButton = document.getElementById('searchButton');
+            const exportButton = document.getElementById('exportCsv');
+            const loadingIndicator = document.getElementById('loading');
+            let currentResults = [];
+            
+            searchButton.addEventListener('click', searchPapers);
+            exportButton.addEventListener('click', exportToCsv);
+            
+            async function searchPapers() {
+                const query = document.getElementById('searchQuery').value.trim();
+                if (!query) {
+                    alert('Please enter a search query');
+                    return;
+                }
+                
+                try {
+                    // Show loading indicator
+                    loadingIndicator.style.display = 'block';
+                    document.querySelector('.results').style.display = 'none';
+                    
+                    const response = await fetch('/api/search', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            query: query,
+                            max_results: 50
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    
+                    currentResults = data.papers;
+                    displayResults(currentResults);
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert(`Error: ${error.message}`);
+                } finally {
+                    loadingIndicator.style.display = 'none';
+                    document.querySelector('.results').style.display = 'block';
+                }
+            }
+            
+            function displayResults(papers) {
+                const tbody = document.querySelector('#resultsTable tbody');
+                tbody.innerHTML = '';
+                
+                if (papers.length === 0) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = '<td colspan="5">No papers found with company affiliations</td>';
+                    tbody.appendChild(row);
+                    return;
+                }
+                
+                papers.forEach(paper => {
+                    const row = document.createElement('tr');
+                    
+                    // Format company affiliations
+                    const companies = paper.company_affiliations && paper.company_affiliations.length > 0 
+                        ? paper.company_affiliations.join(', ') 
+                        : 'None found';
+                    
+                    // Format emails
+                    const emails = paper.emails && paper.emails.length > 0 
+                        ? paper.emails.join(', ') 
+                        : 'None found';
+                    
+                    row.innerHTML = `
+                        <td><a href="https://pubmed.ncbi.nlm.nih.gov/${paper.pubmed_id}/" target="_blank">${paper.pubmed_id}</a></td>
+                        <td>${paper.title || 'No title available'}</td>
+                        <td>${paper.pub_date || 'Unknown date'}</td>
+                        <td>${companies}</td>
+                        <td>${emails}</td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+            }
+            
+            function exportToCsv() {
+                if (currentResults.length === 0) {
+                    alert('No results to export');
+                    return;
+                }
+                
+                // Create CSV content
+                let csvContent = "PMID,Title,Publication Date,Company Affiliations,Emails\n";
+                
+                currentResults.forEach(paper => {
+                    const title = paper.title ? paper.title.replace(/"/g, '""') : 'No title available';
+                    const date = paper.pub_date || 'Unknown date';
+                    const companies = paper.company_affiliations ? paper.company_affiliations.join('; ') : '';
+                    const emails = paper.emails ? paper.emails.join('; ') : '';
+                    
+                    csvContent += `"${paper.pubmed_id}","${title}","${date}","${companies}","${emails}"\n`;
+                });
+                
+                // Create download link
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.setAttribute('href', url);
+                link.setAttribute('download', `pubmed_results_${new Date().toISOString().slice(0,10)}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+            
+            // Allow pressing Enter to search
+            document.getElementById('searchQuery').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    searchPapers();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
